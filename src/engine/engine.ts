@@ -1,4 +1,4 @@
-import { Chess, Move } from 'chess.js';
+import { Chess } from 'chess.js';
 
 // Piece values
 const PIECE_VALUES: Record<string, number> = {
