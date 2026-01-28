@@ -1,69 +1,92 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
-import { getBestMove } from '../engine/engine';
+import { getRandomMove, getBestMove } from '../engine/engine';
+
+type PlayerType = 'human' | 'random' | 'minimax-1' | 'minimax-2' | 'minimax-3';
 
 export default function Game() {
     const [game, setGame] = useState(new Chess());
     const [status, setStatus] = useState('');
     const [isThinking, setIsThinking] = useState(false);
-    const [isAutoPlay, setIsAutoPlay] = useState(false);
-    const [autoPlayIntervalSeconds, setAutoPlayIntervalSeconds] = useState(5);
+    const [autoPlayIntervalSeconds, setAutoPlayIntervalSeconds] = useState(2); // Default faster for AI vs AI
     const [history, setHistory] = useState<string[]>([]);
+
+    // Player Configuration
+    const [whitePlayer, setWhitePlayer] = useState<PlayerType>('human');
+    const [blackPlayer, setBlackPlayer] = useState<PlayerType>('minimax-3');
 
     // Update status check
     useEffect(() => {
         if (game.isGameOver()) {
             setIsThinking(false);
-            setIsAutoPlay(false); // Stop auto-play on game over
-            if (game.isCheckmate()) setStatus('Checkmate!');
+            if (game.isCheckmate()) {
+                const winner = game.turn() === 'w' ? 'Black' : 'White';
+                const winnerType = game.turn() === 'w' ? blackPlayer : whitePlayer;
+                const winnerName = winnerType === 'human' ? winner : `${winner} (${winnerType})`;
+                setStatus(`Checkmate! ${winnerName} wins!`);
+            }
             else if (game.isDraw()) setStatus('Draw!');
             else setStatus('Game Over!');
         } else {
             setStatus('');
         }
-    }, [game]);
+    }, [game, whitePlayer, blackPlayer]);
 
-    // AI & Auto-Play Effect
+    // Game Loop Effect
     useEffect(() => {
         if (game.isGameOver()) return;
 
-        // Check if we should trigger AI
-        // 1. Auto-Play is ON
-        // 2. OR it is AI's turn (Black) and Auto-Play is OFF
-        const shouldTriggerAI = isAutoPlay || game.turn() === 'b';
+        const turn = game.turn();
+        const currentPlayerType = turn === 'w' ? whitePlayer : blackPlayer;
 
-        if (!shouldTriggerAI) return;
+        // Visual feedback if it's AI's turn
+        if (currentPlayerType !== 'human') {
+            setIsThinking(true);
 
-        // Visual feedback
-        setIsThinking(true);
+            // Determine delay: fast if it's AI vs AI (AutoPlay usually not needed explicitly if we just have a "Start Match" button, 
+            // but let's keep AutoPlay concept as "Run AI Loop").
+            // Actually, simpler: Always run if it's AI turn. 
+            // BUT we want to pause if user wants to.
+            // Let's use `isAutoPlay` as a "System Active" toggle if BOTH are AI? 
+            // OR just run automatically if it's AI turn? 
+            // Let's stick to: If AI turn, run.
 
-        const delay = isAutoPlay ? autoPlayIntervalSeconds * 1000 : 500; // 500ms delay for normal AI to feel natural
+            const delay = autoPlayIntervalSeconds * 1000;
 
-        const timer = setTimeout(() => {
-            // Need to wrap in function to avoid using stale state if effect re-runs? 
-            // Actually, because [game] is in dependency array, this effect runs FRESH on every game update.
-            // So 'game' here is always current.
+            const timer = setTimeout(() => {
+                const gameCopy = new Chess(game.fen());
+                let move = null;
 
-            const gameCopy = new Chess(game.fen());
+                switch (currentPlayerType) {
+                    case 'random':
+                        move = getRandomMove(gameCopy);
+                        break;
+                    case 'minimax-1':
+                        move = getBestMove(gameCopy, 1);
+                        break;
+                    case 'minimax-2':
+                        move = getBestMove(gameCopy, 2);
+                        break;
+                    case 'minimax-3':
+                        move = getBestMove(gameCopy, 3);
+                        break;
+                }
 
-            // Calculate best move
-            const bestMove = getBestMove(gameCopy);
+                if (move) {
+                    const result = gameCopy.move(move);
+                    setGame(gameCopy);
+                    setHistory(prev => [...prev, result.san]);
+                }
 
-            if (bestMove) {
-                const result = gameCopy.move(bestMove);
-                setGame(gameCopy);
+                setIsThinking(false);
+            }, delay);
 
-                // IMPORTANT: Use functional update for history to ensure we don't have stale closure issues
-                // although [game] dependency implies history matches this render cycle.
-                setHistory(prev => [...prev, result.san]);
-            }
-
+            return () => clearTimeout(timer);
+        } else {
             setIsThinking(false);
-        }, delay);
-
-        return () => clearTimeout(timer);
-    }, [game, isAutoPlay, autoPlayIntervalSeconds]);
+        }
+    }, [game, whitePlayer, blackPlayer, autoPlayIntervalSeconds]);
 
     const makeAMove = useCallback((move: any) => {
         try {
@@ -78,9 +101,11 @@ export default function Game() {
     }, [game]);
 
     function onDrop(sourceSquare: string, targetSquare: string) {
-        // Prevent moving if thinking or auto-playing 
-        // Also prevent moving if it's not White's turn (unless we want to allow playing both sides? assuming AI plays Black)
-        if (isThinking || isAutoPlay || game.turn() !== 'w') return false;
+        // Only allow move if it is Human's turn
+        const turn = game.turn();
+        const currentPlayerType = turn === 'w' ? whitePlayer : blackPlayer;
+
+        if (currentPlayerType !== 'human') return false;
 
         const move = makeAMove({
             from: sourceSquare,
@@ -90,7 +115,6 @@ export default function Game() {
 
         if (move === null) return false;
 
-        // AI will be triggered by useEffect when game state updates
         return true;
     }
 
@@ -123,36 +147,58 @@ export default function Game() {
 
                 {isThinking && !status && (
                     <div className="text-violet-400 font-mono text-sm animate-pulse w-full text-center">
-                        {isAutoPlay ? `Auto-playing (every ${autoPlayIntervalSeconds}s)...` : 'AI is thinking...'}
+                        AI is thinking...
                     </div>
                 )}
 
                 <div className="flex flex-col gap-3 w-full max-w-md items-center bg-neutral-800 p-4 rounded-xl border border-neutral-700">
-                    <div className="flex gap-2 w-full justify-center">
+                    {/* Player Configuration */}
+                    <div className="flex w-full gap-2 justify-between text-sm">
+                        <div className="flex flex-col gap-1 w-1/2">
+                            <label className="text-neutral-400 font-medium">White</label>
+                            <select
+                                value={whitePlayer}
+                                onChange={(e) => setWhitePlayer(e.target.value as PlayerType)}
+                                className="bg-neutral-900 border border-neutral-600 rounded px-2 py-1 text-white focus:outline-none focus:border-violet-500"
+                            >
+                                <option value="human">Human</option>
+                                <option value="random">Random</option>
+                                <option value="minimax-1">Minimax (Lv 1)</option>
+                                <option value="minimax-2">Minimax (Lv 2)</option>
+                                <option value="minimax-3">Minimax (Lv 3)</option>
+                            </select>
+                        </div>
+                        <div className="flex flex-col gap-1 w-1/2">
+                            <label className="text-neutral-400 font-medium">Black</label>
+                            <select
+                                value={blackPlayer}
+                                onChange={(e) => setBlackPlayer(e.target.value as PlayerType)}
+                                className="bg-neutral-900 border border-neutral-600 rounded px-2 py-1 text-white focus:outline-none focus:border-violet-500"
+                            >
+                                <option value="human">Human</option>
+                                <option value="random">Random</option>
+                                <option value="minimax-1">Minimax (Lv 1)</option>
+                                <option value="minimax-2">Minimax (Lv 2)</option>
+                                <option value="minimax-3">Minimax (Lv 3)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-2 w-full justify-center mt-2">
                         <button
                             onClick={() => {
                                 setGame(new Chess());
                                 setHistory([]);
-                                setIsAutoPlay(false);
                                 setIsThinking(false);
                             }}
                             className="px-4 py-2 bg-slate-700 hover:bg-slate-600 rounded text-sm font-medium transition-colors flex-1"
                         >
                             Reset Game
                         </button>
-                        <button
-                            onClick={() => setIsAutoPlay(!isAutoPlay)}
-                            className={`px-4 py-2 rounded text-sm font-medium transition-colors flex-1 ${isAutoPlay
-                                ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                }`}
-                        >
-                            {isAutoPlay ? 'Stop Auto-Play' : 'Start Auto-Play'}
-                        </button>
                     </div>
 
                     <div className="flex items-center gap-3 w-full justify-center text-sm text-neutral-400">
-                        <label htmlFor="speed">Move Speed:</label>
+                        <label htmlFor="speed">AI Speed:</label>
                         <input
                             id="speed"
                             type="number"

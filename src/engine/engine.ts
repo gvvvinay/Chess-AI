@@ -2,19 +2,15 @@ import { Chess } from 'chess.js';
 
 // Piece values
 const PIECE_VALUES: Record<string, number> = {
-    p: 10,
-    n: 30,
-    b: 30,
-    r: 50,
-    q: 90,
-    k: 900,
+    p: 1,
+    n: 3,
+    b: 3,
+    r: 5,
+    q: 9,
+    k: 0,
 };
 
-// Evaluate board from the perspective of the player currently moving
-// Positive score -> Good for current turn player
-// However, standard minimax usually evaluates for White. 
-// Let's stick to: Positive = White advantage, Negative = Black advantage.
-const evaluateBoard = (game: Chess): number => {
+function evaluateBoard(game: Chess): number {
     let totalEvaluation = 0;
     const board = game.board();
 
@@ -22,22 +18,21 @@ const evaluateBoard = (game: Chess): number => {
         for (let col = 0; col < 8; col++) {
             const piece = board[row][col];
             if (piece) {
-                const value = PIECE_VALUES[piece.type] || 0;
+                const value = PIECE_VALUES[piece.type];
                 totalEvaluation += piece.color === 'w' ? value : -value;
             }
         }
     }
     return totalEvaluation;
-};
+}
 
-// Minimax with Alpha-Beta Pruning
-const minimax = (
+function minimax(
     game: Chess,
     depth: number,
     alpha: number,
     beta: number,
-    isMaximizingPlayer: boolean // True = White, False = Black
-): number => {
+    isMaximizingPlayer: boolean
+): number {
     if (depth === 0 || game.isGameOver()) {
         return evaluateBoard(game);
     }
@@ -48,10 +43,10 @@ const minimax = (
         let maxEval = -Infinity;
         for (const move of moves) {
             game.move(move);
-            const evalScore = minimax(game, depth - 1, alpha, beta, false);
+            const evalValue = minimax(game, depth - 1, alpha, beta, false);
             game.undo();
-            maxEval = Math.max(maxEval, evalScore);
-            alpha = Math.max(alpha, evalScore);
+            maxEval = Math.max(maxEval, evalValue);
+            alpha = Math.max(alpha, evalValue);
             if (beta <= alpha) break;
         }
         return maxEval;
@@ -59,36 +54,45 @@ const minimax = (
         let minEval = Infinity;
         for (const move of moves) {
             game.move(move);
-            const evalScore = minimax(game, depth - 1, alpha, beta, true);
+            const evalValue = minimax(game, depth - 1, alpha, beta, true);
             game.undo();
-            minEval = Math.min(minEval, evalScore);
-            beta = Math.min(beta, evalScore);
+            minEval = Math.min(minEval, evalValue);
+            beta = Math.min(beta, evalValue);
             if (beta <= alpha) break;
         }
         return minEval;
     }
-};
+}
 
-export const getBestMove = (game: Chess): string | null => {
+export function getRandomMove(game: Chess): string | null {
+    const moves = game.moves();
+    if (moves.length === 0) return null;
+    return moves[Math.floor(Math.random() * moves.length)];
+}
+
+export function getBestMove(game: Chess, depth: number = 3): string | null {
     const moves = game.moves();
     if (moves.length === 0) return null;
 
-    let bestMove: string | null = null;
+    let bestMove = null;
     let bestValue = game.turn() === 'w' ? -Infinity : Infinity;
-    const isMaximizing = game.turn() === 'w';
 
-    // Randomize order to add variety if scores are equal
+    // Randomize moves to avoid deterministic play in equal positions
     moves.sort(() => Math.random() - 0.5);
-
-    // Iterative deepening or just fixed depth? Fixed depth 3 is safe for JS.
-    const DEPTH = 3;
 
     for (const move of moves) {
         game.move(move);
-        const boardValue = minimax(game, DEPTH - 1, -Infinity, Infinity, !isMaximizing);
+        // Turn has switched
+        const boardValue = minimax(
+            game,
+            depth - 1,
+            -Infinity,
+            Infinity,
+            game.turn() === 'w'
+        );
         game.undo();
 
-        if (isMaximizing) {
+        if (game.turn() === 'w') {
             if (boardValue > bestValue) {
                 bestValue = boardValue;
                 bestMove = move;
@@ -102,4 +106,4 @@ export const getBestMove = (game: Chess): string | null => {
     }
 
     return bestMove || moves[0];
-};
+}
