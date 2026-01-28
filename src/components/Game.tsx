@@ -24,27 +24,43 @@ export default function Game() {
         }
     }, [game]);
 
-    // Auto-Play Effect
+    // AI & Auto-Play Effect
     useEffect(() => {
-        if (!isAutoPlay || game.isGameOver()) return;
+        if (game.isGameOver()) return;
+
+        // Check if we should trigger AI
+        // 1. Auto-Play is ON
+        // 2. OR it is AI's turn (Black) and Auto-Play is OFF
+        const shouldTriggerAI = isAutoPlay || game.turn() === 'b';
+
+        if (!shouldTriggerAI) return;
 
         // Visual feedback
         setIsThinking(true);
 
+        const delay = isAutoPlay ? autoPlayIntervalSeconds * 1000 : 500; // 500ms delay for normal AI to feel natural
+
         const timer = setTimeout(() => {
+            // Need to wrap in function to avoid using stale state if effect re-runs? 
+            // Actually, because [game] is in dependency array, this effect runs FRESH on every game update.
+            // So 'game' here is always current.
+
             const gameCopy = new Chess(game.fen());
 
-            // Calculate best move for CURRENT turn (works for both white and black)
+            // Calculate best move
             const bestMove = getBestMove(gameCopy);
 
             if (bestMove) {
                 const result = gameCopy.move(bestMove);
                 setGame(gameCopy);
+
+                // IMPORTANT: Use functional update for history to ensure we don't have stale closure issues
+                // although [game] dependency implies history matches this render cycle.
                 setHistory(prev => [...prev, result.san]);
             }
 
             setIsThinking(false);
-        }, autoPlayIntervalSeconds * 1000);
+        }, delay);
 
         return () => clearTimeout(timer);
     }, [game, isAutoPlay, autoPlayIntervalSeconds]);
@@ -54,10 +70,7 @@ export default function Game() {
             const gameCopy = new Chess(game.fen());
             const result = gameCopy.move(move);
             setGame(gameCopy);
-
-            // Update history
             setHistory(prev => [...prev, result.san]);
-
             return result;
         } catch (e) {
             return null;
@@ -65,7 +78,9 @@ export default function Game() {
     }, [game]);
 
     function onDrop(sourceSquare: string, targetSquare: string) {
-        if (isThinking || isAutoPlay) return false;
+        // Prevent moving if thinking or auto-playing 
+        // Also prevent moving if it's not White's turn (unless we want to allow playing both sides? assuming AI plays Black)
+        if (isThinking || isAutoPlay || game.turn() !== 'w') return false;
 
         const move = makeAMove({
             from: sourceSquare,
@@ -75,35 +90,12 @@ export default function Game() {
 
         if (move === null) return false;
 
-        // AI Turn (only if not auto-playing)
-        setIsThinking(true);
-        setTimeout(makeAiMove, 200);
+        // AI will be triggered by useEffect when game state updates
         return true;
     }
 
-    function makeAiMove() {
-        const gameCopy = new Chess(game.fen());
-        if (gameCopy.isGameOver()) {
-            setIsThinking(false);
-            return;
-        }
+    // makeAiMove function is no longer needed separately
 
-        // Use setTimeout again to allow UI to render "Thinking" state if getting best move blocks slightly
-        // actually getBestMove is sync, so it blocks. 
-        // We are already in a setTimeout from onDrop, so that's fine.
-
-        try {
-            const bestMove = getBestMove(gameCopy);
-            if (bestMove) {
-                const result = gameCopy.move(bestMove);
-                setGame(gameCopy);
-                // Update history
-                setHistory(prev => [...prev, result.san]);
-            }
-        } finally {
-            setIsThinking(false);
-        }
-    }
 
     const handleIntervalChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         let val = parseInt(e.target.value);
