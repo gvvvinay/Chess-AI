@@ -9,6 +9,7 @@ export default function Game() {
     const [isThinking, setIsThinking] = useState(false);
     const [isAutoPlay, setIsAutoPlay] = useState(false);
     const [autoPlayIntervalSeconds, setAutoPlayIntervalSeconds] = useState(5);
+    const [history, setHistory] = useState<string[]>([]);
 
     // Update status check
     useEffect(() => {
@@ -52,6 +53,10 @@ export default function Game() {
             const gameCopy = new Chess(game.fen());
             const result = gameCopy.move(move);
             setGame(gameCopy);
+
+            // Update history
+            setHistory(prev => [...prev, result.san]);
+
             return result;
         } catch (e) {
             return null;
@@ -106,7 +111,7 @@ export default function Game() {
         setAutoPlayIntervalSeconds(val);
     };
 
-    const history = game.history();
+
 
     return (
         <div className="flex flex-col lg:flex-row items-start gap-8 p-4">
@@ -132,6 +137,7 @@ export default function Game() {
                         <button
                             onClick={() => {
                                 setGame(new Chess());
+                                setHistory([]);
                                 setIsAutoPlay(false);
                                 setIsThinking(false);
                             }}
