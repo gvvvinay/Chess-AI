@@ -38,8 +38,9 @@ export default function Game() {
             const bestMove = getBestMove(gameCopy);
 
             if (bestMove) {
-                gameCopy.move(bestMove);
+                const result = gameCopy.move(bestMove);
                 setGame(gameCopy);
+                setHistory(prev => [...prev, result.san]);
             }
 
             setIsThinking(false);
@@ -94,8 +95,10 @@ export default function Game() {
         try {
             const bestMove = getBestMove(gameCopy);
             if (bestMove) {
-                gameCopy.move(bestMove);
+                const result = gameCopy.move(bestMove);
                 setGame(gameCopy);
+                // Update history
+                setHistory(prev => [...prev, result.san]);
             }
         } finally {
             setIsThinking(false);
